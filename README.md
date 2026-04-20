@@ -1,132 +1,123 @@
-# Credit Risk Modelling AI Project — Walkthrough
+# Credit Risk Modelling AI Project
 
 ## Project Summary
 
-Built an end-to-end credit risk analytics pipeline for a **34,390 two-wheeler loan pool** using Python. The pipeline covers all 6 deliverables from the project brief across 7 executable modules.
+End-to-end credit risk analytics pipeline for a **34,390 two-wheeler loan pool** using Python. The pipeline covers all 6 deliverables from the project brief across 7 executable modules, with 3 PD models (Logistic Regression, Gradient Boosting, Neural Network), SHAP explainability, Monte Carlo simulation, macro-factor correlation analysis, and cashflow stress testing.
 
 ---
 
-## Pipeline Results
+## How to Run
 
-### Module 1: Data Cleaning ✅
-**File:** [01_data_cleaning.py](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/src/01_data_cleaning.py)
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-- Processed 34,390 loans across 19 cleaning steps
-- Converted Excel serial dates to datetime
-- Standardized categorical values (business source casing)
-- Engineered 10+ new features (LTV bands, income ratios, bureau score bands, etc.)
-- Created default flags: **is_default (DPD≥90): 95 loans (0.28%)** and **is_stressed (DPD≥30): 1,505 loans (4.38%)**
-- Output: [cleaned_data.csv](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/cleaned_data.csv) (55 columns) + [cleaning_log.txt](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/cleaning_log.txt)
+# Run the full pipeline (all modules in sequence)
+python main.py
 
----
+# Or run from a specific module (e.g., resume from module 3)
+python main.py --from 3
 
-### Module 2: Exploratory Data Analysis ✅
-**File:** [02_eda.py](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/src/02_eda.py)
-
-Generated 12 visualizations covering default rates by category, distributions, DPD analysis, correlation heatmap, geographic patterns, risk segmentation, and LTV analysis.
-
-**Key Finding:** Rajasthan has the highest stress rate (13.9%) despite being 5th by volume. Bureau score has limited discriminatory power for this pool.
-
-![Risk Segmentation Heatmap](/Users/jaiwadhwa/.gemini/antigravity/brain/0df59837-6e45-4c25-9cc8-dd0f8dadf8e5/risk_segmentation_heatmap.png)
-
----
-
-### Module 3: PD Modelling ✅
-**File:** [03_pd_model.py](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/src/03_pd_model.py)
-
-Built two models targeting **is_stressed (DPD≥30)** for better class balance:
-
-| Metric | Logistic Regression | Random Forest ★ |
-|--------|:------------------:|:--------------:|
-| **Test AUC** | 0.7047 | **0.7714** |
-| **Gini** | 0.4094 | **0.5429** |
-| **KS Statistic** | 0.3309 | **0.4113** |
-| **CV AUC** | 0.6847 ± 0.012 | **0.7380 ± 0.022** |
-
-**★ Recommended: Random Forest** (higher AUC, better discrimination)
-
-**Top Risk Drivers:**
-1. Number of installments (19.8%)
-2. State group (9.3%)
-3. Sanctioned loan amount (7.9%)
-4. Interest rate (7.3%)
-5. EMI-to-income ratio (7.1%)
-
-![PD Model Comparison](/Users/jaiwadhwa/.gemini/antigravity/brain/0df59837-6e45-4c25-9cc8-dd0f8dadf8e5/pd_model_comparison.png)
-
-![Feature Importance](/Users/jaiwadhwa/.gemini/antigravity/brain/0df59837-6e45-4c25-9cc8-dd0f8dadf8e5/feature_importance.png)
+# Or run individual modules
+python src/01_data_cleaning.py      # → outputs/cleaned_data.csv
+python src/02_eda.py                # → outputs/figures/*.png
+python src/03_pd_model.py           # → outputs/model_outputs.csv + outputs/models/
+python src/04_lgd_model.py          # → outputs/cleaned_data_with_lgd.csv
+python src/05_portfolio_loss.py     # → outputs/portfolio_report.csv
+python src/06_correlation_model.py  # → outputs/cleaned_data_with_clusters.csv
+python src/07_cashflow_simulation.py # → outputs/cashflow_projection.csv
+```
 
 ---
 
-### Module 4: LGD Estimation ✅
-**File:** [04_lgd_model.py](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/src/04_lgd_model.py)
+## Pipeline Overview
 
-Collateral-based LGD estimation with depreciation modelling and three stress scenarios:
+### Module 1: Data Cleaning & Preparation
+**File:** `src/01_data_cleaning.py`
 
-| Scenario | Mean LGD | Mean Recovery | Collateral Haircut |
-|----------|:--------:|:-------------:|:-----------------:|
-| Base Case | **0.1%** | 99.9% | 0% |
-| Moderate Stress | **7.0%** | 93.0% | 20% |
-| Severe Stress | **30.0%** | 70.0% | 40% |
-
-> [!NOTE]
-> The very low base-case LGD reflects strong collateral coverage — most two-wheeler loans have collateral values exceeding the outstanding balance even after depreciation.
-
-![LGD Scenario Comparison](/Users/jaiwadhwa/.gemini/antigravity/brain/0df59837-6e45-4c25-9cc8-dd0f8dadf8e5/lgd_scenario_comparison.png)
+- Processes 34,390 loans across 19 cleaning steps
+- Converts Excel serial dates to datetime
+- Standardizes categorical values (business source casing)
+- Engineers 10+ derived features (LTV bands, income ratios, bureau score bands, etc.)
+- Creates default flags: **is_default (DPD≥90)** and **is_stressed (DPD≥30)**
+- Outputs: `outputs/cleaned_data.csv` + `outputs/cleaning_log.txt`
 
 ---
 
-### Module 5: Portfolio Loss Distribution ✅
-**File:** [05_portfolio_loss.py](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/src/05_portfolio_loss.py)
+### Module 2: Exploratory Data Analysis (EDA)
+**File:** `src/02_eda.py`
 
-50,000 Monte Carlo simulations using single-factor Gaussian copula (ρ=0.15):
-
-| Metric | Value | % of EAD |
-|--------|------:|:--------:|
-| Total Exposure (EAD) | ₹2,491,738,956 | 100% |
-| **Expected Loss (EL)** | ₹386,474,248 | 15.5% |
-| Unexpected Loss (σ) | ₹151,207,946 | 6.1% |
-| **VaR 95%** | ₹659,725,415 | 26.5% |
-| **VaR 99%** | ₹782,304,174 | 31.4% |
-| CVaR / ES 99% | ₹833,724,543 | 33.5% |
-| Economic Capital 99% | ₹395,829,926 | 15.9% |
-
-![Portfolio Loss Distribution](/Users/jaiwadhwa/.gemini/antigravity/brain/0df59837-6e45-4c25-9cc8-dd0f8dadf8e5/portfolio_loss_distribution.png)
+Generates 12 visualizations covering default rates by category, distributions, DPD analysis, correlation heatmap, geographic patterns, risk segmentation, and LTV analysis.
 
 ---
 
-### Module 6: Default Correlation & Segmentation ✅
-**File:** [06_correlation_model.py](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/src/06_correlation_model.py)
+### Module 3: PD Modelling
+**File:** `src/03_pd_model.py`
 
-**Asset Correlation (Vasicek model):**
-| Segmentation | Estimated ρ |
-|--------------|:-----------:|
-| Geography (State) | **0.048** (highest) |
-| Manufacturer | 0.005 |
-| Income Band | 0.001 |
-| Bureau Score Band | 0.001 |
+Builds **three models** as required by the project brief:
 
-**K-Means Segmentation:** Optimal k=2 (Silhouette=0.22)
-- **Cluster 0** (24,542 loans): Higher income (₹69K), DR=4.4%
-- **Cluster 1** (9,848 loans): Lower income (₹28K), DR=4.2%
+| Model | Type | Purpose |
+|-------|------|---------|
+| **Logistic Regression** | Baseline Statistical | Interpretable baseline with odds ratios |
+| **Gradient Boosting / Random Forest** | AI/ML Model | Best discriminatory power |
+| **Neural Network (MLP)** | Deep Learning | AI innovation requirement |
 
-> [!TIP]
-> Geographic concentration is the strongest correlation driver — Rajasthan's 13.9% stress rate vs Kerala's 2.4% creates meaningful tail risk.
+All models are **probability-calibrated** using `CalibratedClassifierCV` to ensure predicted PDs match observed default rates.
+
+**Validation includes:**
+- ROC/AUC, Gini, KS Statistic, Brier Score
+- Cross-validation (5-fold stratified)
+- Calibration plots (reliability diagrams)
+- Decile validation tables (standard credit risk format)
+- SHAP explainability (TreeExplainer for risk driver ranking)
+
+**Outputs:** `outputs/model_outputs.csv`, `outputs/models/*.pkl`
 
 ---
 
-### Module 7: Cashflow Simulation ✅
-**File:** [07_cashflow_simulation.py](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/src/07_cashflow_simulation.py)
+### Module 4: LGD Estimation
+**File:** `src/04_lgd_model.py`
 
-28-month projection with PD term structure, CPR prepayment modelling, and recovery lag:
+Collateral-based LGD estimation with depreciation modelling (two-wheeler specific) and three stress scenarios:
 
-| Scenario | Total Defaults | Net Loss | NPV (% of initial) |
-|----------|:-----------:|:--------:|:------------------:|
-| **Base Case** | ₹398M | ₹239M | **100.1%** |
-| Moderate Stress | ₹731M | ₹513M | **88.8%** |
-| Severe Stress | ₹999M | ₹802M | **77.1%** |
+| Scenario | Collateral Haircut | Recovery Delay | Recovery Costs |
+|----------|:-----------------:|:--------------:|:--------------:|
+| Base Case | 0% | 6 months | 10% |
+| Moderate Stress | 20% | 12 months | 15% |
+| Severe Stress | 40% | 18 months | 20% |
 
-![Cashflow Stress Scenarios](/Users/jaiwadhwa/.gemini/antigravity/brain/0df59837-6e45-4c25-9cc8-dd0f8dadf8e5/cashflow_stress_scenarios.png)
+---
+
+### Module 5: Portfolio Loss Distribution
+**File:** `src/05_portfolio_loss.py`
+
+50,000 Monte Carlo simulations using **single-factor Gaussian copula model** (Vasicek / Basel II IRB framework):
+- Expected Loss (EL) = PD × LGD × EAD
+- VaR at 95%, 99%, 99.9% confidence levels
+- CVaR / Expected Shortfall
+- Economic Capital computation
+- Loss exceedance curve
+
+---
+
+### Module 6: Default Correlation & Segmentation
+**File:** `src/06_correlation_model.py`
+
+- **Part A:** Asset correlation estimation via Vasicek single-factor model
+- **Part B:** K-Means borrower segmentation with silhouette analysis
+- **Part C:** External macro variable correlation (CPI inflation, GDP growth, unemployment, BSE 500, two-wheeler index) with macro stress scenarios
+- **Part D:** Intra vs inter-segment correlation analysis
+
+---
+
+### Module 7: Cashflow Simulation
+**File:** `src/07_cashflow_simulation.py`
+
+- PD term structure (marginal PD curve via log-normal hazard model)
+- CPR-based prepayment modelling (SMM conversion)
+- Monthly cashflow waterfall projection
+- NPV computation at 10% discount rate
+- Stress scenario comparison (Base / Moderate / Severe)
 
 ---
 
@@ -134,25 +125,16 @@ Collateral-based LGD estimation with depreciation modelling and three stress sce
 
 | File | Description |
 |------|-------------|
-| [cleaned_data.csv](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/cleaned_data.csv) | Clean dataset (34,390 × 55) |
-| [cleaning_log.txt](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/cleaning_log.txt) | 19-step cleaning documentation |
-| [model_outputs.csv](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/model_outputs.csv) | PD per loan + rating bands |
-| [portfolio_report.csv](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/portfolio_report.csv) | VaR/CVaR/EC summary |
-| [cashflow_projection.csv](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/cashflow_projection.csv) | Monthly cashflow waterfall |
-| [pd_term_structure.csv](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/pd_term_structure.csv) | Marginal PD curve |
-| [figures/](file:///Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model/outputs/figures) | 24 visualization plots |
+| `outputs/cleaned_data.csv` | Clean dataset (34,390 × 55) |
+| `outputs/cleaning_log.txt` | 19-step cleaning documentation |
+| `outputs/model_outputs.csv` | PD per loan (all 3 models + recommended + rating bands) |
+| `outputs/models/` | Persisted trained models (joblib format) |
+| `outputs/portfolio_report.csv` | VaR/CVaR/EC summary |
+| `outputs/cashflow_projection.csv` | Monthly cashflow waterfall |
+| `outputs/pd_term_structure.csv` | Marginal PD curve |
+| `outputs/credit_risk_model_outputs.xlsx` | Consolidated Excel (multi-sheet) |
+| `outputs/figures/` | 25+ visualization plots |
 
-## How to Run
+## Dependencies
 
-```bash
-cd /Users/jaiwadhwa/Desktop/Jai/personal/financial_prediction_model
-
-# Run each module in sequence:
-python3 src/01_data_cleaning.py    # → outputs/cleaned_data.csv
-python3 src/02_eda.py              # → outputs/figures/*.png
-python3 src/03_pd_model.py         # → outputs/model_outputs.csv
-python3 src/04_lgd_model.py        # → outputs/cleaned_data_with_lgd.csv
-python3 src/05_portfolio_loss.py   # → outputs/portfolio_report.csv
-python3 src/06_correlation_model.py # → outputs/cleaned_data_with_clusters.csv
-python3 src/07_cashflow_simulation.py # → outputs/cashflow_projection.csv
-```
+See `requirements.txt`. Key libraries: pandas, numpy, scikit-learn, xgboost, lightgbm, shap, matplotlib, seaborn, scipy, openpyxl.

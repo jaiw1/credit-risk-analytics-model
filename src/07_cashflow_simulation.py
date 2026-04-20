@@ -122,7 +122,8 @@ def compute_smm(cpr_annual=CPR_ANNUAL):
     return smm
 
 
-def simulate_cashflows(df, months, marginal_pd, survival, projection_months):
+def simulate_cashflows(df, months, marginal_pd, survival, projection_months,
+                       cpr_annual=CPR_ANNUAL, base_recovery_rate=BASE_RECOVERY_RATE):
     """
     Project monthly cashflows from the loan pool.
 
@@ -134,6 +135,10 @@ def simulate_cashflows(df, months, marginal_pd, survival, projection_months):
     5. Defaults (PD curve-based)
     6. Recoveries (with lag)
     7. Net cashflow & ending balance
+
+    Parameters:
+        cpr_annual: Conditional Prepayment Rate (annual)
+        base_recovery_rate: Recovery rate on defaulted loans
     """
     print("\n" + "=" * 50)
     print("CASHFLOW SIMULATION")
@@ -149,12 +154,13 @@ def simulate_cashflows(df, months, marginal_pd, survival, projection_months):
     avg_remaining = df["balance_tenure"].mean()
 
     # SMM for prepayments
-    smm = compute_smm(CPR_ANNUAL)
+    smm = compute_smm(cpr_annual)
 
     print(f"  Initial Pool Balance:     ₹{initial_balance:,.0f}")
     print(f"  Avg Interest Rate:        {avg_interest_rate*100:.2f}% (monthly: {monthly_rate*100:.4f}%)")
-    print(f"  CPR:                      {CPR_ANNUAL*100:.1f}% | SMM: {smm*100:.4f}%")
+    print(f"  CPR:                      {cpr_annual*100:.1f}% | SMM: {smm*100:.4f}%")
     print(f"  Recovery lag:             {RECOVERY_LAG_MONTHS} months")
+    print(f"  Recovery rate:            {base_recovery_rate*100:.0f}%")
 
     # Initialize cashflow table
     cf = pd.DataFrame(index=range(projection_months), columns=[
@@ -198,7 +204,7 @@ def simulate_cashflows(df, months, marginal_pd, survival, projection_months):
             default_amount *= scale
 
         # Queue recovery for later
-        recovery_amount = default_amount * BASE_RECOVERY_RATE
+        recovery_amount = default_amount * base_recovery_rate
         recovery_month = i + RECOVERY_LAG_MONTHS
         default_queue.append((recovery_month, recovery_amount))
 
@@ -254,7 +260,11 @@ def simulate_cashflows(df, months, marginal_pd, survival, projection_months):
 
 
 def run_stress_cashflows(df, months, marginal_pd, survival, projection_months):
-    """Run cashflow simulation under stressed assumptions."""
+    """Run cashflow simulation under stressed assumptions.
+
+    Each scenario uses different PD multiplier, CPR, and recovery rates,
+    passed as explicit parameters (no global variable mutation).
+    """
     print("\n" + "=" * 50)
     print("STRESS SCENARIO CASHFLOWS")
     print("=" * 50)
@@ -269,20 +279,16 @@ def run_stress_cashflows(df, months, marginal_pd, survival, projection_months):
     for name, params in scenarios.items():
         print(f"\n--- {name} (PD×{params['pd_mult']}, CPR={params['cpr']*100}%, Recovery={params['recovery']*100}%) ---")
 
-        # Adjust marginal PD
+        # Adjust marginal PD by stress multiplier
         stressed_mpd = np.clip(marginal_pd * params["pd_mult"], 0, 0.5)
 
-        global CPR_ANNUAL, BASE_RECOVERY_RATE
-        orig_cpr = CPR_ANNUAL
-        orig_recovery = BASE_RECOVERY_RATE
-        CPR_ANNUAL = params["cpr"]
-        BASE_RECOVERY_RATE = params["recovery"]
-
-        cf, init_bal = simulate_cashflows(df, months, stressed_mpd, survival, projection_months)
+        # Pass scenario-specific CPR and recovery rate as parameters
+        cf, init_bal = simulate_cashflows(
+            df, months, stressed_mpd, survival, projection_months,
+            cpr_annual=params["cpr"],
+            base_recovery_rate=params["recovery"]
+        )
         results[name] = {"cf": cf, "init_balance": init_bal}
-
-        CPR_ANNUAL = orig_cpr
-        BASE_RECOVERY_RATE = orig_recovery
 
     return results
 

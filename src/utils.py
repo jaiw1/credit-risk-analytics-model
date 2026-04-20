@@ -18,9 +18,12 @@ MODEL_OUTPUTS_PATH = os.path.join(PROJECT_ROOT, "outputs", "model_outputs.csv")
 PORTFOLIO_REPORT_PATH = os.path.join(PROJECT_ROOT, "outputs", "portfolio_report.csv")
 CLEANING_LOG_PATH = os.path.join(PROJECT_ROOT, "outputs", "cleaning_log.txt")
 FIGURES_DIR = os.path.join(PROJECT_ROOT, "outputs", "figures")
+MODELS_DIR = os.path.join(PROJECT_ROOT, "outputs", "models")
+EXCEL_OUTPUT_PATH = os.path.join(PROJECT_ROOT, "outputs", "credit_risk_model_outputs.xlsx")
 
 # Ensure output directories exist
 os.makedirs(os.path.join(PROJECT_ROOT, "outputs", "figures"), exist_ok=True)
+os.makedirs(os.path.join(PROJECT_ROOT, "outputs", "models"), exist_ok=True)
 
 # ============================================================
 # COLUMN NAME MAPPING (raw -> clean snake_case)
@@ -96,6 +99,9 @@ CATEGORICAL_FEATURES = [
 ]
 
 # Features to use for PD modelling (subset without target leakage)
+# NOTE: Removed bureau_score_band, age_band, income_band — these are
+# directly derived from bureau_score, age, monthly_income already in the list,
+# which introduces multicollinearity and gives tree models redundant splits.
 PD_MODEL_FEATURES = [
     "bureau_score", "ltv", "loan_to_income_ratio", "emi_to_income_ratio",
     "interest_rate", "monthly_income", "age", "no_of_installments",
@@ -103,7 +109,6 @@ PD_MODEL_FEATURES = [
     # categorical (will be encoded)
     "gender", "manufacturer", "state_group", "insurance_status",
     "reg_info_status", "business_sourced_by", "vehicle_type",
-    "bureau_score_band", "age_band", "income_band",
 ]
 
 # ============================================================
