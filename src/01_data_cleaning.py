@@ -22,7 +22,7 @@ from utils import (
 def load_raw_data(log):
     """Load raw .xlsb file with correct header row."""
     print("\n[1/12] Loading raw data...")
-    df = pd.read_excel(RAW_DATA_PATH, engine="pyxlsb", header=1)
+    df = pd.read_excel(RAW_DATA_PATH, engine="pyxlsb", header=1, sheet_name="Historical Default Data")
     log.log(
         "Loaded raw dataset",
         f"File: {RAW_DATA_PATH}",

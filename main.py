@@ -21,7 +21,6 @@ Modules:
 import sys
 import time
 
-
 def run_module(module_num, module_name, import_path):
     """Run a single module and track timing."""
     print("\n" + "█" * 70)
@@ -46,16 +45,16 @@ def run_module(module_num, module_name, import_path):
 def generate_excel_output():
     """Consolidate all model outputs into a formatted Excel file."""
     print("\n" + "█" * 70)
-    print("  MODULE 8: EXCEL OUTPUT GENERATION")
+    print("  MODULE 9: EXCEL OUTPUT GENERATION")
     print("█" * 70)
 
     import pandas as pd
     import os
 
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
-    from utils import (
+    from src.utils import (
         CLEANED_DATA_PATH, MODEL_OUTPUTS_PATH, PORTFOLIO_REPORT_PATH,
-        EXCEL_OUTPUT_PATH
+        EXCEL_OUTPUT_PATH, PROJECT_ROOT
     )
 
     try:
@@ -98,6 +97,13 @@ def generate_excel_output():
             pdcurve_df.to_excel(writer, sheet_name="PD Term Structure", index=False)
             print(f"  Sheet 'PD Term Structure': {len(pdcurve_df)} rows")
 
+        # Sheet 6: Scored Analysis Pool
+        analysis_pool_path = os.path.join(PROJECT_ROOT, "outputs", "analysis_pool_scored.csv")
+        if os.path.exists(analysis_pool_path):
+            analysis_df = pd.read_csv(analysis_pool_path)
+            analysis_df.to_excel(writer, sheet_name="Scored Analysis Pool", index=False)
+            print(f"  Sheet 'Scored Analysis Pool': {len(analysis_df)} rows")
+
         writer.close()
         print(f"\n  ✓ Excel output saved to: {EXCEL_OUTPUT_PATH}")
         return True
@@ -131,6 +137,7 @@ def main():
         (5, "PORTFOLIO LOSS DISTRIBUTION", "05_portfolio_loss"),
         (6, "DEFAULT CORRELATION & SEGMENTATION", "06_correlation_model"),
         (7, "CASHFLOW SIMULATION", "07_cashflow_simulation"),
+        (8, "SCORE ANALYSIS POOL", "08_score_analysis_pool"),
     ]
 
     results = {}
@@ -146,8 +153,8 @@ def main():
             print(f"\n  ⚠ Module {num} failed. Continuing with remaining modules...")
 
     # Excel output (always runs)
-    if start_from <= 8:
-        results[8] = generate_excel_output()
+    if start_from <= 9:
+        results[9] = generate_excel_output()
 
     total_time = time.time() - overall_start
 

@@ -878,6 +878,20 @@ def main():
     joblib.dump(nn_model, os.path.join(MODELS_DIR, "pd_neural_network.pkl"))
     joblib.dump(nn_scaler, os.path.join(MODELS_DIR, "pd_nn_scaler.pkl"))
     joblib.dump(encoders, os.path.join(MODELS_DIR, "label_encoders.pkl"))
+    
+    # Save the absolute best recommended model generically
+    if best_name == lr_metrics["model"]:
+        joblib.dump(lr_model, os.path.join(MODELS_DIR, "pd_best_model.pkl"))
+        joblib.dump(lr_scaler, os.path.join(MODELS_DIR, "pd_best_scaler.pkl"))
+    elif best_name == nn_metrics["model"]:
+        joblib.dump(nn_model, os.path.join(MODELS_DIR, "pd_best_model.pkl"))
+        joblib.dump(nn_scaler, os.path.join(MODELS_DIR, "pd_best_scaler.pkl"))
+    else:
+        # Tree models don't use scalers
+        joblib.dump(gb_model, os.path.join(MODELS_DIR, "pd_best_model.pkl"))
+        # Dump a dummy scaler placeholder for consistency
+        joblib.dump("NO_SCALER", os.path.join(MODELS_DIR, "pd_best_scaler.pkl"))
+        
     print(f"  Models saved to: {MODELS_DIR}/")
 
     print("\n" + "=" * 60)

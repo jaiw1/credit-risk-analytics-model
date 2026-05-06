@@ -119,13 +119,14 @@ def monte_carlo_simulation(df, n_simulations=N_SIMULATIONS, rho=ASSET_CORRELATIO
     default_thresholds = stats.norm.ppf(pds_clipped)
 
     # Pre-compute LGD beta distribution parameters
-    # Beta(alpha, beta) with mean = lgd, variance controlled
-    lgd_var = 0.01  # small variance around point estimate
-    lgd_alpha = lgds * ((lgds * (1 - lgds) / lgd_var) - 1)
-    lgd_beta_param = (1 - lgds) * ((lgds * (1 - lgds) / lgd_var) - 1)
-    # Clip to valid range
-    lgd_alpha = np.clip(lgd_alpha, 0.1, 100)
-    lgd_beta_param = np.clip(lgd_beta_param, 0.1, 100)
+    # Beta(alpha, beta) with mean = lgd
+    # Instead of an impossible absolute variance, we use a relative precision parameter (nu)
+    nu = 50.0  # Controls the spread of the distribution around the mean
+    
+    # Clip LGDs strictly between 0 and 1 so beta parameters are strictly positive
+    lgds_clipped = np.clip(lgds, 0.0001, 0.9999)
+    lgd_alpha = lgds_clipped * nu
+    lgd_beta_param = (1 - lgds_clipped) * nu
 
     # Simulation
     losses = np.zeros(n_simulations)
@@ -172,13 +173,14 @@ def monte_carlo_simulation(df, n_simulations=N_SIMULATIONS, rho=ASSET_CORRELATIO
     return losses, default_counts
 
 
-def compute_risk_metrics(losses, total_ead):
+def compute_risk_metrics(losses, total_ead, total_el):
     """Compute VaR, CVaR, and other tail risk metrics."""
     print("\n" + "=" * 50)
     print("RISK METRICS")
     print("=" * 50)
 
-    el = np.mean(losses)
+    # Use analytical Expected Loss for the baseline metrics (avoiding simulation noise)
+    el = total_el
     ul = np.std(losses)
 
     print(f"\n  Expected Loss (EL):         ₹{el:,.0f}  ({el/total_ead*100:.4f}% of EAD)")
@@ -312,7 +314,7 @@ def main():
     losses, default_counts = monte_carlo_simulation(df)
 
     # Risk metrics
-    metrics = compute_risk_metrics(losses, total_ead)
+    metrics = compute_risk_metrics(losses, total_ead, total_el)
 
     # Visualizations
     plot_loss_distribution(losses, metrics, total_ead)
