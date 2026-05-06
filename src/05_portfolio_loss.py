@@ -44,10 +44,10 @@ def load_data():
     raise FileNotFoundError("No cleaned data found. Run previous modules first.")
 
 
-def compute_expected_loss(df):
+def compute_expected_loss(df, lgd_col, scenario_name):
     """Compute Expected Loss for each loan and the portfolio."""
     print("\n" + "=" * 50)
-    print("EXPECTED LOSS COMPUTATION")
+    print(f"EXPECTED LOSS COMPUTATION: {scenario_name.upper()}")
     print("=" * 50)
 
     # EAD = Total Principal Outstanding
@@ -56,28 +56,25 @@ def compute_expected_loss(df):
     # Use PD from model (or fallback to historical rate)
     if "pd_recommended" in df.columns:
         df["pd_final"] = df["pd_recommended"]
-        print("  Using model-predicted PD")
     else:
         # Fallback: use historical default rate
         hist_rate = df["is_stressed"].mean()
         df["pd_final"] = hist_rate
-        print(f"  Using historical default rate: {hist_rate:.4f}")
 
-    # Use LGD from scenario analysis (or fallback)
-    if "lgd_base_case" in df.columns:
-        df["lgd_final"] = df["lgd_base_case"]
-        print("  Using base case LGD from Module 4")
+    # Use LGD from scenario analysis
+    if lgd_col in df.columns:
+        df["lgd_final"] = df[lgd_col]
+        print(f"  Using LGD column: {lgd_col}")
     else:
-        # Fallback: assume 60% LGD for unsecured two-wheeler
         df["lgd_final"] = 0.60
         print("  Using assumed LGD: 60%")
 
     # Expected Loss per loan
-    df["expected_loss"] = df["pd_final"] * df["lgd_final"] * df["ead"]
+    df[f"expected_loss_{lgd_col}"] = df["pd_final"] * df["lgd_final"] * df["ead"]
 
     # Portfolio statistics
     total_ead = df["ead"].sum()
-    total_el = df["expected_loss"].sum()
+    total_el = df[f"expected_loss_{lgd_col}"].sum()
     el_rate = total_el / total_ead if total_ead > 0 else 0
 
     print(f"\n  Portfolio Exposure (EAD):    ₹{total_ead:,.0f}")
@@ -90,20 +87,12 @@ def compute_expected_loss(df):
     return df, total_ead, total_el
 
 
-def monte_carlo_simulation(df, n_simulations=N_SIMULATIONS, rho=ASSET_CORRELATION):
+def monte_carlo_simulation(df, scenario_name, n_simulations=N_SIMULATIONS, rho=ASSET_CORRELATION):
     """
     Simulate portfolio loss distribution using single-factor Gaussian copula model.
-
-    For each simulation:
-    1. Draw a systematic (market) factor Z ~ N(0,1)
-    2. For each loan i, draw idiosyncratic factor eps_i ~ N(0,1)
-    3. Compute asset return: A_i = sqrt(rho)*Z + sqrt(1-rho)*eps_i
-    4. Loan defaults if A_i < Phi^{-1}(PD_i)
-    5. For each default, draw LGD from Beta distribution around estimated LGD
-    6. Loss = sum(default_i * LGD_i * EAD_i)
     """
     print("\n" + "=" * 50)
-    print(f"MONTE CARLO SIMULATION ({n_simulations:,} iterations)")
+    print(f"MONTE CARLO SIMULATION ({n_simulations:,} iterations) - {scenario_name}")
     print("=" * 50)
 
     np.random.seed(RANDOM_SEED)
@@ -114,16 +103,11 @@ def monte_carlo_simulation(df, n_simulations=N_SIMULATIONS, rho=ASSET_CORRELATIO
     eads = df["ead"].values
 
     # Convert PDs to default thresholds (inverse normal)
-    # Clip PDs to avoid infinities at 0 or 1
     pds_clipped = np.clip(pds, 1e-8, 1 - 1e-8)
     default_thresholds = stats.norm.ppf(pds_clipped)
 
     # Pre-compute LGD beta distribution parameters
-    # Beta(alpha, beta) with mean = lgd
-    # Instead of an impossible absolute variance, we use a relative precision parameter (nu)
     nu = 50.0  # Controls the spread of the distribution around the mean
-    
-    # Clip LGDs strictly between 0 and 1 so beta parameters are strictly positive
     lgds_clipped = np.clip(lgds, 0.0001, 0.9999)
     lgd_alpha = lgds_clipped * nu
     lgd_beta_param = (1 - lgds_clipped) * nu
@@ -146,15 +130,15 @@ def monte_carlo_simulation(df, n_simulations=N_SIMULATIONS, rho=ASSET_CORRELATIO
         # Idiosyncratic factors for each loan
         eps = np.random.normal(0, 1, (batch_n, n_loans))
 
-        # Asset returns: A_i = sqrt(rho)*Z + sqrt(1-rho)*eps_i
+        # Asset returns
         sqrt_rho = np.sqrt(rho)
         sqrt_1_rho = np.sqrt(1 - rho)
         asset_returns = sqrt_rho * Z[:, np.newaxis] + sqrt_1_rho * eps
 
-        # Default indicator: default if asset return < threshold
+        # Default indicator
         defaults = (asset_returns < default_thresholds[np.newaxis, :]).astype(float)
 
-        # Draw LGD for defaulted loans from Beta distribution
+        # Draw LGD for defaulted loans
         lgd_draws = np.random.beta(
             lgd_alpha[np.newaxis, :].repeat(batch_n, axis=0),
             lgd_beta_param[np.newaxis, :].repeat(batch_n, axis=0)
@@ -179,7 +163,7 @@ def compute_risk_metrics(losses, total_ead, total_el):
     print("RISK METRICS")
     print("=" * 50)
 
-    # Use analytical Expected Loss for the baseline metrics (avoiding simulation noise)
+    # Use analytical Expected Loss for the baseline metrics
     el = total_el
     ul = np.std(losses)
 
@@ -191,9 +175,8 @@ def compute_risk_metrics(losses, total_ead, total_el):
 
     for conf in CONFIDENCE_LEVELS:
         var = np.percentile(losses, conf * 100)
-        # CVaR = Expected Shortfall = mean of losses above VaR
         cvar = losses[losses >= var].mean() if (losses >= var).any() else var
-        ec = var - el   # Economic Capital
+        ec = var - el
 
         pct_label = f"{conf*100:.1f}%"
         print(f"\n  VaR ({pct_label}):                ₹{var:,.0f}  ({var/total_ead*100:.4f}% of EAD)")
@@ -207,9 +190,9 @@ def compute_risk_metrics(losses, total_ead, total_el):
     return metrics
 
 
-def plot_loss_distribution(losses, metrics, total_ead):
+def plot_loss_distribution(losses, metrics, total_ead, scenario_name):
     """Visualize the simulated loss distribution."""
-    print("\n[PLOTS] Generating portfolio loss visualizations...")
+    print(f"\n[PLOTS] Generating portfolio loss visualizations for {scenario_name}...")
 
     fig, axes = plt.subplots(1, 2, figsize=(18, 7))
 
@@ -225,7 +208,7 @@ def plot_loss_distribution(losses, metrics, total_ead):
 
     ax.set_xlabel("Portfolio Loss (₹)")
     ax.set_ylabel("Density")
-    ax.set_title("Simulated Portfolio Loss Distribution", fontsize=14, fontweight="bold")
+    ax.set_title(f"Simulated Portfolio Loss Distribution ({scenario_name})", fontsize=14, fontweight="bold")
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
 
@@ -247,16 +230,16 @@ def plot_loss_distribution(losses, metrics, total_ead):
     plt.suptitle(f"Monte Carlo Loss Simulation ({N_SIMULATIONS:,} scenarios, ρ={ASSET_CORRELATION})",
                  fontsize=16, fontweight="bold")
     plt.tight_layout()
-    plt.savefig(os.path.join(FIGURES_DIR, "portfolio_loss_distribution.png"),
+    
+    safe_name = scenario_name.replace(" ", "_").replace("%", "").replace("(", "").replace(")", "").lower()
+    plt.savefig(os.path.join(FIGURES_DIR, f"portfolio_loss_distribution_{safe_name}.png"),
                 dpi=150, bbox_inches="tight")
     plt.close()
-    print("  [PLOT] Saved: portfolio_loss_distribution.png")
+    print(f"  [PLOT] Saved: portfolio_loss_distribution_{safe_name}.png")
 
     # 3. Default count distribution
-    # (Saved during simulation but not passed here — generate from losses)
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Loss exceedance curve
     sorted_losses = np.sort(losses)[::-1]
     exceedance_prob = np.arange(1, len(sorted_losses) + 1) / len(sorted_losses)
 
@@ -265,35 +248,20 @@ def plot_loss_distribution(losses, metrics, total_ead):
     ax.axhline(0.05, color="#2a9d8f", linestyle="--", alpha=0.7, label="5% exceedance")
     ax.set_xlabel("Loss Amount (₹)")
     ax.set_ylabel("Exceedance Probability")
-    ax.set_title("Loss Exceedance Curve", fontsize=14, fontweight="bold")
+    ax.set_title(f"Loss Exceedance Curve ({scenario_name})", fontsize=14, fontweight="bold")
     ax.legend()
     ax.set_yscale("log")
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(os.path.join(FIGURES_DIR, "loss_exceedance_curve.png"), dpi=150, bbox_inches="tight")
+    plt.savefig(os.path.join(FIGURES_DIR, f"loss_exceedance_curve_{safe_name}.png"), dpi=150, bbox_inches="tight")
     plt.close()
-    print("  [PLOT] Saved: loss_exceedance_curve.png")
+    print(f"  [PLOT] Saved: loss_exceedance_curve_{safe_name}.png")
 
 
-def generate_portfolio_report(df, metrics, total_ead):
+def generate_portfolio_report(all_reports):
     """Generate a summary portfolio risk report."""
-    report = pd.DataFrame([
-        {"Metric": "Total Number of Loans", "Value": f"{len(df):,}"},
-        {"Metric": "Total Exposure (EAD)", "Value": f"₹{total_ead:,.0f}"},
-        {"Metric": "Portfolio Avg PD", "Value": f"{df['pd_final'].mean()*100:.4f}%"},
-        {"Metric": "Portfolio Avg LGD", "Value": f"{df['lgd_final'].mean()*100:.2f}%"},
-        {"Metric": "Expected Loss (EL)", "Value": f"₹{metrics['el']:,.0f}"},
-        {"Metric": "EL % of EAD", "Value": f"{metrics['el']/total_ead*100:.4f}%"},
-        {"Metric": "Unexpected Loss (σ)", "Value": f"₹{metrics['ul']:,.0f}"},
-        {"Metric": "VaR 95%", "Value": f"₹{metrics['var_95.0%']:,.0f}"},
-        {"Metric": "VaR 99%", "Value": f"₹{metrics['var_99.0%']:,.0f}"},
-        {"Metric": "CVaR / ES 99%", "Value": f"₹{metrics['cvar_99.0%']:,.0f}"},
-        {"Metric": "Economic Capital 99%", "Value": f"₹{metrics['ec_99.0%']:,.0f}"},
-        {"Metric": "EC % of EAD", "Value": f"{metrics['ec_99.0%']/total_ead*100:.4f}%"},
-        {"Metric": "Monte Carlo Simulations", "Value": f"{N_SIMULATIONS:,}"},
-        {"Metric": "Asset Correlation (ρ)", "Value": f"{ASSET_CORRELATION}"},
-    ])
+    report = pd.DataFrame(all_reports)
     report.to_csv(PORTFOLIO_REPORT_PATH, index=False)
     print(f"\n  Portfolio report saved to: {PORTFOLIO_REPORT_PATH}")
     return report
@@ -307,22 +275,45 @@ def main():
     # Load data
     df = load_data()
 
-    # Compute expected loss
-    df, total_ead, total_el = compute_expected_loss(df)
+    scenarios = [
+        {"name": "Base Case", "col": "lgd_base_case"},
+        {"name": "Policy Floor 20%", "col": "lgd_policy_floor_(20%)"},
+        {"name": "RBI Norms 65%", "col": "lgd_rbi_norms_(65%)"}
+    ]
+    
+    all_reports = []
+    
+    for scenario in scenarios:
+        scenario_name = scenario["name"]
+        lgd_col = scenario["col"]
+        
+        if lgd_col not in df.columns:
+            print(f"Warning: {lgd_col} not found in data. Skipping {scenario_name}.")
+            continue
+            
+        df, total_ead, total_el = compute_expected_loss(df, lgd_col, scenario_name)
+        losses, default_counts = monte_carlo_simulation(df, scenario_name)
+        metrics = compute_risk_metrics(losses, total_ead, total_el)
+        plot_loss_distribution(losses, metrics, total_ead, scenario_name)
+        
+        report_dict = {
+            "Scenario": scenario_name,
+            "Total Exposure (EAD)": f"₹{total_ead:,.0f}",
+            "Portfolio Avg LGD": f"{df['lgd_final'].mean()*100:.2f}%",
+            "Expected Loss (EL)": f"₹{metrics['el']:,.0f}",
+            "EL % of EAD": f"{metrics['el']/total_ead*100:.4f}%",
+            "Unexpected Loss (σ)": f"₹{metrics['ul']:,.0f}",
+            "VaR 95%": f"₹{metrics['var_95.0%']:,.0f}",
+            "VaR 99%": f"₹{metrics['var_99.0%']:,.0f}",
+            "CVaR / ES 99%": f"₹{metrics['cvar_99.0%']:,.0f}",
+            "Economic Capital 99%": f"₹{metrics['ec_99.0%']:,.0f}"
+        }
+        all_reports.append(report_dict)
 
-    # Monte Carlo simulation
-    losses, default_counts = monte_carlo_simulation(df)
-
-    # Risk metrics
-    metrics = compute_risk_metrics(losses, total_ead, total_el)
-
-    # Visualizations
-    plot_loss_distribution(losses, metrics, total_ead)
-
-    # Portfolio report
-    report = generate_portfolio_report(df, metrics, total_ead)
-    print("\n  PORTFOLIO RISK REPORT:")
-    print(report.to_string(index=False))
+    if all_reports:
+        report_df = generate_portfolio_report(all_reports)
+        print("\n  PORTFOLIO RISK REPORT:")
+        print(report_df.to_string(index=False))
 
     # Save updated data
     output_path = CLEANED_DATA_PATH.replace(".csv", "_with_el.csv")
@@ -333,7 +324,7 @@ def main():
     print("PORTFOLIO LOSS ANALYSIS COMPLETE")
     print("=" * 60)
 
-    return df, losses, metrics
+    return df
 
 
 if __name__ == "__main__":

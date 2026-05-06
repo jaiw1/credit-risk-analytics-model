@@ -65,24 +65,34 @@ def main():
         
     # Load label encoders and encode categoricals
     encoders = joblib.load(os.path.join(MODELS_DIR, "label_encoders.pkl"))
-    cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
     
-    for col in cat_cols:
-        X[col] = X[col].astype(str)
-        le = encoders.get(col)
-        if le is not None:
-            known_classes = set(le.classes_)
-            # Handle unseen labels by mapping to most frequent or 'Unknown'
-            mode_val = le.classes_[0]
-            if "Unknown" in known_classes:
-                mode_val = "Unknown"
-            elif "Other" in known_classes:
-                mode_val = "Other"
-                
-            X[col] = X[col].apply(lambda x: x if x in known_classes else mode_val)
-            X[col] = le.transform(X[col])
-        else:
-            X[col] = 0
+    if "woe_encoder" in encoders:
+        # We are using WOE encoding!
+        woe = encoders["woe_encoder"]
+        cat_cols = encoders.get("cat_cols", [])
+        for col in cat_cols:
+            if col in X.columns:
+                X[col] = X[col].fillna("Unknown").astype(str)
+        X = woe.transform(X)
+    else:
+        # Legacy LabelEncoding path
+        cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
+        
+        for col in cat_cols:
+            X[col] = X[col].astype(str)
+            le = encoders.get(col)
+            if le is not None:
+                known_classes = set(le.classes_)
+                mode_val = le.classes_[0]
+                if "Unknown" in known_classes:
+                    mode_val = "Unknown"
+                elif "Other" in known_classes:
+                    mode_val = "Other"
+                    
+                X[col] = X[col].apply(lambda x: x if x in known_classes else mode_val)
+                X[col] = le.transform(X[col])
+            else:
+                X[col] = 0
 
     # 4. Predict PD
     print("\n[4] Predicting Probability of Default (PD)...")

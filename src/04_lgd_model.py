@@ -27,25 +27,28 @@ from utils import CLEANED_DATA_PATH, FIGURES_DIR
 # ============================================================
 SCENARIOS = {
     "Base Case": {
-        "collateral_haircut": 0.0,       # No haircut on collateral
-        "recovery_delay_months": 6,       # 6-month recovery process
-        "recovery_cost_pct": 0.10,        # 10% recovery costs
-        "depreciation_annual": 0.15,      # 15% annual depreciation for two-wheelers
-        "description": "Normal economic conditions, standard recovery timeline"
+        "collateral_haircut": 0.0,
+        "recovery_delay_months": 6,
+        "recovery_cost_pct": 0.10,
+        "depreciation_annual": 0.15,
+        "lgd_floor": 0.0,
+        "description": "Normal economic conditions, mathematical LGD (no floor)"
     },
-    "Moderate Stress": {
-        "collateral_haircut": 0.20,       # 20% drop in resale values
-        "recovery_delay_months": 12,      # 12-month recovery delay
-        "recovery_cost_pct": 0.15,        # 15% recovery costs
-        "depreciation_annual": 0.20,      # 20% depreciation under stress
-        "description": "Moderate economic downturn, extended recovery"
+    "Policy Floor (20%)": {
+        "collateral_haircut": 0.0,
+        "recovery_delay_months": 6,
+        "recovery_cost_pct": 0.10,
+        "depreciation_annual": 0.15,
+        "lgd_floor": 0.20,
+        "description": "Normal conditions, applying 20% LGD policy floor"
     },
-    "Severe Stress": {
-        "collateral_haircut": 0.40,       # 40% crash in resale values
-        "recovery_delay_months": 18,      # 18-month recovery delay
-        "recovery_cost_pct": 0.20,        # 20% recovery costs
-        "depreciation_annual": 0.25,      # 25% depreciation under severe stress
-        "description": "Severe recession, flooded secondary market, legal delays"
+    "RBI Norms (65%)": {
+        "collateral_haircut": 0.0,
+        "recovery_delay_months": 6,
+        "recovery_cost_pct": 0.10,
+        "depreciation_annual": 0.15,
+        "lgd_floor": 0.65,
+        "description": "Normal conditions, applying RBI 65% LGD floor norm"
     }
 }
 
@@ -115,7 +118,15 @@ def compute_lgd(df, scenario):
     """Compute LGD = 1 - Recovery Rate for each loan under a given scenario."""
     recovery_rate = compute_recovery_rate(df, scenario)
     lgd = 1 - recovery_rate
-    return lgd.clip(0, 1), recovery_rate
+    
+    # Apply LGD floor
+    lgd_floor = scenario.get("lgd_floor", 0.0)
+    lgd = lgd.clip(lower=lgd_floor, upper=1.0)
+    
+    # Re-adjust recovery rate to reflect the floored LGD
+    recovery_rate = 1 - lgd
+    
+    return lgd, recovery_rate
 
 
 def run_scenario_analysis(df):
