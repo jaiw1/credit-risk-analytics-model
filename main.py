@@ -10,12 +10,14 @@ Usage:
 Modules:
     1. Data Cleaning & Preparation
     2. Exploratory Data Analysis (EDA)
-    3. PD Modelling (Logistic Reg + Gradient Boosting + Neural Network)
+    3. PD Modelling (XGBoost + Optuna headline stress-PD model)
+    3.5 Hard Default PD Extension (90+ DPD rare-event model)
     4. LGD Estimation (Scenario Analysis)
     5. Portfolio Loss Distribution (Monte Carlo)
     6. Default Correlation & Segmentation (incl. Macro Variables)
     7. Cashflow Simulation (PD Curve + Stress Scenarios)
-    8. Excel Output (consolidated model outputs)
+    8. Score Analysis Pool
+    9. Excel Output (consolidated model outputs)
 """
 
 import sys
@@ -71,6 +73,13 @@ def generate_excel_output():
             port_df = pd.read_csv(PORTFOLIO_REPORT_PATH)
             port_df.to_excel(writer, sheet_name="Portfolio Risk Summary", index=False)
             print(f"  Sheet 'Portfolio Risk Summary': {len(port_df)} rows")
+
+        # Sheet 2B: 90+ DPD hard-default PD extension
+        hard_default_path = os.path.join(PROJECT_ROOT, "outputs", "hard_default_model_outputs.csv")
+        if os.path.exists(hard_default_path):
+            hard_df = pd.read_csv(hard_default_path)
+            hard_df.to_excel(writer, sheet_name="Hard Default 90DPD PD", index=False)
+            print(f"  Sheet 'Hard Default 90DPD PD': {len(hard_df)} rows")
 
         # Sheet 3: LGD per loan (subset)
         lgd_path = CLEANED_DATA_PATH.replace(".csv", "_with_lgd.csv")
@@ -139,7 +148,8 @@ def main():
     modules = [
         (1, "DATA CLEANING & PREPARATION", "01_data_cleaning"),
         (2, "EXPLORATORY DATA ANALYSIS", "02_eda"),
-        (3, "PD MODELLING", "03_pd_model"),
+        (3, "PD MODELLING (XGBOOST + OPTUNA)", "03b_pd_model_xgboost_optuna"),
+        (3.5, "HARD DEFAULT PD EXTENSION (90+ DPD)", "03c_pd_model_hard_default"),
         (4, "LGD ESTIMATION", "04_lgd_model"),
         (5, "PORTFOLIO LOSS DISTRIBUTION", "05_portfolio_loss"),
         (6, "DEFAULT CORRELATION & SEGMENTATION", "06_correlation_model"),

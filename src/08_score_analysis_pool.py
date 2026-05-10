@@ -59,7 +59,7 @@ def main():
 
     X = df[PD_MODEL_FEATURES].copy()
     
-    # Fill NaN with median (same logic as 03_pd_model.py)
+    # Fill NaN with median (same logic as 03b_pd_model_xgboost_optuna.py)
     for col in X.select_dtypes(include=[np.number]).columns:
         X[col] = X[col].fillna(X[col].median() if not pd.isna(X[col].median()) else 0)
         
@@ -97,12 +97,12 @@ def main():
     # 4. Predict PD
     print("\n[4] Predicting Probability of Default (PD)...")
     
-    # Dynamically load the single best model determined by 03_pd_model.py
+    # Dynamically load the single best model determined by 03b_pd_model_xgboost_optuna.py
     best_model_path = os.path.join(MODELS_DIR, "pd_best_model.pkl")
     best_scaler_path = os.path.join(MODELS_DIR, "pd_best_scaler.pkl")
     
     if not os.path.exists(best_model_path):
-        raise FileNotFoundError(f"Best model not found at {best_model_path}. Please run 03_pd_model.py first.")
+        raise FileNotFoundError(f"Best model not found at {best_model_path}. Please run 03b_pd_model_xgboost_optuna.py first.")
         
     model = joblib.load(best_model_path)
     scaler = joblib.load(best_scaler_path)
