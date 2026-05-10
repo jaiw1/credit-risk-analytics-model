@@ -23,13 +23,15 @@ from scipy import stats, optimize
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
-from utils import CLEANED_DATA_PATH, FIGURES_DIR
+from utils import CLEANED_DATA_PATH, FIGURES_DIR, PROJECT_ROOT
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 MAX_CLUSTERS = 8
 RANDOM_STATE = 42
+MIN_VINTAGE_LOANS = 100
+MACRO_DATA_PATH = os.path.join(PROJECT_ROOT, "data", "india_macro_quarterly.csv")
 CLUSTER_FEATURES = [
     "bureau_score", "ltv", "monthly_income", "age", "interest_rate",
     "sanctioned_loan_amount", "emi_to_income_ratio", "loan_to_income_ratio",
@@ -303,10 +305,11 @@ def plot_segmentation_results(df, sil_scores, inertias, optimal_k):
     print("  [PLOT] Saved: cluster_profiles.png")
 
     # 3. Scatter: PD vs LGD colored by cluster
-    if "pd_final" in df.columns and "lgd_base_case" in df.columns:
+    lgd_plot_col = "lgd_base_case_20pct_floor"
+    if "pd_final" in df.columns and lgd_plot_col in df.columns:
         fig, ax = plt.subplots(figsize=(10, 7))
         scatter = ax.scatter(
-            df["pd_final"], df["lgd_base_case"],
+            df["pd_final"], df[lgd_plot_col],
             c=df["risk_cluster"], cmap="Set2", alpha=0.3, s=10
         )
         ax.set_xlabel("Probability of Default (PD)")
@@ -326,17 +329,31 @@ def plot_segmentation_results(df, sil_scores, inertias, optimal_k):
 # relevant external variables such as collateral values, income levels,
 # inflation trends, disposable incomes, etc."
 
-# Representative Indian macro data — typically sourced from RBI, MOSPI, BSE.
-# Below we use realistic values for illustration and methodology demonstration.
-MACRO_QUARTERLY_DATA = {
-    "quarter": ["Q1-2023", "Q2-2023", "Q3-2023", "Q4-2023",
-                "Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"],
-    "cpi_inflation_pct": [6.44, 4.87, 5.02, 5.69, 5.09, 4.83, 5.49, 5.22],
-    "gdp_growth_pct": [6.1, 7.8, 7.6, 8.4, 6.7, 6.7, 5.4, 6.2],
-    "unemployment_pct": [7.8, 8.1, 7.7, 7.5, 7.6, 9.2, 7.8, 7.4],
-    "bse_500_return_pct": [3.2, 8.1, 5.6, 11.2, 4.3, 6.8, -2.1, 1.5],
-    "two_wheeler_index": [102, 105, 110, 108, 112, 106, 100, 97],
-}
+MACRO_VARIABLES = [
+    "cpi_inflation_yoy_pct",
+    "real_gdp_qoq_pct",
+    "policy_rate_pct",
+    "share_price_qoq_return_pct",
+]
+
+
+def load_macro_data():
+    """Load externally sourced macro variables aligned to calendar quarters."""
+    if not os.path.exists(MACRO_DATA_PATH):
+        raise FileNotFoundError(
+            f"Macro data not found at {MACRO_DATA_PATH}. "
+            "Create data/india_macro_quarterly.csv before running correlation analysis."
+        )
+
+    macro_df = pd.read_csv(MACRO_DATA_PATH)
+    if "quarter" not in macro_df.columns:
+        raise ValueError("Macro data must include a 'quarter' column like 2024Q4.")
+
+    for col in MACRO_VARIABLES:
+        if col in macro_df.columns:
+            macro_df[col] = pd.to_numeric(macro_df[col], errors="coerce")
+
+    return macro_df
 
 
 def analyze_macro_correlation(df):
@@ -353,10 +370,10 @@ def analyze_macro_correlation(df):
     print("\n" + "=" * 60)
     print("PART C: EXTERNAL MACRO VARIABLE CORRELATION")
     print("=" * 60)
-    print("  Analyzing pool-level correlation with macroeconomic factors...")
-    print("  Variables: CPI Inflation, GDP Growth, Unemployment, BSE 500, Two-Wheeler Index")
+    print("  Analyzing pool-level correlation with actual quarterly macro data...")
+    print(f"  Macro source file: {MACRO_DATA_PATH}")
 
-    macro_df = pd.DataFrame(MACRO_QUARTERLY_DATA)
+    macro_df = load_macro_data()
 
     # --- Step 1: Compute vintage-level default rates ---
     # Parse disbursement dates if available
@@ -364,10 +381,7 @@ def analyze_macro_correlation(df):
         df["disb_date_parsed"] = pd.to_datetime(df["disbursement_date"], errors="coerce")
         df["disb_quarter"] = df["disb_date_parsed"].dt.to_period("Q").astype(str)
     else:
-        # Fallback: create synthetic quarters based on data distribution
-        n = len(df)
-        quarters = MACRO_QUARTERLY_DATA["quarter"]
-        df["disb_quarter"] = np.random.choice(quarters, size=n, p=[0.12]*len(quarters))
+        raise ValueError("disbursement_date is required for time-aligned macro correlation.")
 
     # Compute default rates by quarter
     target_col = "is_stressed" if "is_stressed" in df.columns else "is_default"
@@ -378,43 +392,49 @@ def analyze_macro_correlation(df):
         avg_ltv=("ltv", "mean"),
     ).reset_index()
 
-    # Merge with macro data (using available overlapping quarters)
+    # Merge with macro data (using actual overlapping quarters)
     merged = vintage_rates.merge(macro_df, left_on="disb_quarter", right_on="quarter", how="inner")
 
+    thin = merged[merged["loan_count"] < MIN_VINTAGE_LOANS]
+    if not thin.empty:
+        dropped = ", ".join(f"{r.quarter} (n={int(r.loan_count)})" for r in thin.itertuples())
+        print(f"  Dropping thin vintages below {MIN_VINTAGE_LOANS} loans: {dropped}")
+        merged = merged[merged["loan_count"] >= MIN_VINTAGE_LOANS].copy()
+
     if len(merged) < 3:
-        # If not enough overlap, use all macro quarters with synthetic vintage rates
-        print("  Limited quarter overlap — computing correlation with synthetic vintage alignment...")
-        np.random.seed(RANDOM_STATE)
-        base_dr = df[target_col].mean()
-        # Simulate vintage DRs that correlate with macro
-        macro_df["synthetic_dr"] = (
-            base_dr
-            + 0.005 * (macro_df["cpi_inflation_pct"] - macro_df["cpi_inflation_pct"].mean())
-            - 0.003 * (macro_df["gdp_growth_pct"] - macro_df["gdp_growth_pct"].mean())
-            + 0.004 * (macro_df["unemployment_pct"] - macro_df["unemployment_pct"].mean())
-            - 0.001 * (macro_df["bse_500_return_pct"] - macro_df["bse_500_return_pct"].mean())
-            + np.random.normal(0, 0.002, len(macro_df))
-        ).clip(0, 1)
-        merged = macro_df.copy()
-        merged["default_rate"] = merged["synthetic_dr"]
-        merged["loan_count"] = len(df) // len(merged)
+        print("  Not enough actual time-aligned vintages for correlation after filtering.")
+        return merged, {}
 
     # --- Step 2: Compute correlations ---
-    macro_vars = ["cpi_inflation_pct", "gdp_growth_pct", "unemployment_pct",
-                  "bse_500_return_pct", "two_wheeler_index"]
+    macro_vars = [v for v in MACRO_VARIABLES if v in merged.columns]
 
     print(f"\n  Correlation: Default Rate vs. Macro Variables (n={len(merged)} quarters)")
-    print(f"  {'Macro Variable':<25} {'Pearson r':>10} {'Direction':>12} {'Interpretation':>20}")
-    print("  " + "-" * 70)
+    print("  Note: vintage default rates are also affected by seasoning; interpret correlations cautiously.")
+    print(f"  {'Macro Variable':<32} {'Pearson r':>10} {'p-value':>10} {'Direction':>12} {'Strength':>12}")
+    print("  " + "-" * 82)
 
     correlations = {}
     for var in macro_vars:
-        if var in merged.columns and "default_rate" in merged.columns:
-            corr = merged["default_rate"].corr(merged[var])
-            correlations[var] = corr
-            direction = "↑ risk" if corr > 0 else "↓ risk"
-            strength = "Strong" if abs(corr) > 0.6 else "Moderate" if abs(corr) > 0.3 else "Weak"
-            print(f"  {var:<25} {corr:>10.4f} {direction:>12} {strength:>20}")
+        valid = merged[["default_rate", var]].dropna()
+        if len(valid) < 3:
+            continue
+        corr, pvalue = stats.pearsonr(valid["default_rate"], valid[var])
+        correlations[var] = {"corr": corr, "pvalue": pvalue, "n": len(valid)}
+        direction = "↑ risk" if corr > 0 else "↓ risk"
+        strength = "Strong" if abs(corr) > 0.6 else "Moderate" if abs(corr) > 0.3 else "Weak"
+        print(f"  {var:<32} {corr:>10.4f} {pvalue:>10.4f} {direction:>12} {strength:>12}")
+
+    dataset_path = os.path.join(PROJECT_ROOT, "outputs", "macro_vintage_correlation_dataset.csv")
+    merged.to_csv(dataset_path, index=False)
+    print(f"\n  Saved time-aligned macro/vintage dataset: {dataset_path}")
+
+    if correlations:
+        corr_path = os.path.join(PROJECT_ROOT, "outputs", "macro_correlation_results.csv")
+        pd.DataFrame([
+            {"macro_variable": var, **stats_dict}
+            for var, stats_dict in correlations.items()
+        ]).to_csv(corr_path, index=False)
+        print(f"  Saved macro correlation results: {corr_path}")
 
     # --- Step 3: Macro Stress Scenarios ---
     print(f"\n  MACRO STRESS SCENARIOS:")
@@ -423,18 +443,20 @@ def analyze_macro_correlation(df):
     base_pd = df[target_col].mean()
     scenarios = {
         "Base Case": {
-            "cpi_inflation_pct": 5.2, "gdp_growth_pct": 6.5,
-            "unemployment_pct": 7.5, "bse_500_return_pct": 3.0,
+            "cpi_inflation_yoy_pct": merged["cpi_inflation_yoy_pct"].mean(),
+            "real_gdp_qoq_pct": merged["real_gdp_qoq_pct"].mean(),
+            "policy_rate_pct": merged["policy_rate_pct"].mean(),
+            "share_price_qoq_return_pct": merged["share_price_qoq_return_pct"].mean(),
             "description": "Current macro environment"
         },
         "Mild Recession": {
-            "cpi_inflation_pct": 7.0, "gdp_growth_pct": 3.5,
-            "unemployment_pct": 9.5, "bse_500_return_pct": -5.0,
+            "cpi_inflation_yoy_pct": 6.5, "real_gdp_qoq_pct": 0.5,
+            "policy_rate_pct": 7.25, "share_price_qoq_return_pct": -8.0,
             "description": "Mild economic slowdown with sticky inflation"
         },
         "Severe Recession": {
-            "cpi_inflation_pct": 9.0, "gdp_growth_pct": 0.5,
-            "unemployment_pct": 12.0, "bse_500_return_pct": -20.0,
+            "cpi_inflation_yoy_pct": 8.5, "real_gdp_qoq_pct": -1.0,
+            "policy_rate_pct": 8.0, "share_price_qoq_return_pct": -20.0,
             "description": "Severe downturn (COVID-like scenario)"
         },
     }
@@ -442,10 +464,10 @@ def analyze_macro_correlation(df):
     # Compute macro-adjusted PD for each scenario using sensitivity coefficients
     # Sensitivities derived from correlation analysis
     sensitivities = {
-        "cpi_inflation_pct": 0.005,       # 0.5% PD increase per 1% inflation rise
-        "gdp_growth_pct": -0.003,         # 0.3% PD decrease per 1% GDP growth
-        "unemployment_pct": 0.004,        # 0.4% PD increase per 1% unemployment rise
-        "bse_500_return_pct": -0.001,     # 0.1% PD decrease per 1% market return
+        "cpi_inflation_yoy_pct": 0.005,        # 0.5% PD increase per 1% inflation rise
+        "real_gdp_qoq_pct": -0.006,            # 0.6% PD decrease per 1% quarterly GDP growth
+        "policy_rate_pct": 0.004,              # 0.4% PD increase per 1% rate rise
+        "share_price_qoq_return_pct": -0.001,  # 0.1% PD decrease per 1% market return
     }
 
     # Base macro values (used as reference)
@@ -473,9 +495,12 @@ def plot_macro_correlation(merged, correlations):
     """Visualize the macro correlation analysis."""
     print("\n[PLOTS] Generating macro correlation visualizations...")
 
-    macro_vars = ["cpi_inflation_pct", "gdp_growth_pct", "unemployment_pct",
-                  "bse_500_return_pct", "two_wheeler_index"]
-    labels = ["CPI Inflation", "GDP Growth", "Unemployment", "BSE 500 Return", "Two-Wheeler Index"]
+    if merged.empty or not correlations:
+        print("  Not enough macro correlation data to plot. Skipping macro_correlation.png.")
+        return
+
+    macro_vars = [v for v in MACRO_VARIABLES if v in merged.columns]
+    labels = ["CPI Inflation YoY", "Real GDP QoQ", "Policy Rate", "Share Price QoQ Return"]
 
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     axes = axes.flatten()
@@ -484,16 +509,20 @@ def plot_macro_correlation(merged, correlations):
     for i, (var, label) in enumerate(zip(macro_vars, labels)):
         ax = axes[i]
         if var in merged.columns and "default_rate" in merged.columns:
-            ax.scatter(merged[var], merged["default_rate"] * 100,
+            plot_data = merged[[var, "default_rate"]].dropna()
+            if len(plot_data) < 2:
+                ax.axis("off")
+                continue
+            ax.scatter(plot_data[var], plot_data["default_rate"] * 100,
                        s=80, color="#e63946", alpha=0.8, edgecolors="white")
 
             # Fit trendline
-            z = np.polyfit(merged[var], merged["default_rate"] * 100, 1)
+            z = np.polyfit(plot_data[var], plot_data["default_rate"] * 100, 1)
             p = np.poly1d(z)
-            x_line = np.linspace(merged[var].min(), merged[var].max(), 50)
+            x_line = np.linspace(plot_data[var].min(), plot_data[var].max(), 50)
             ax.plot(x_line, p(x_line), "--", color="#457b9d", linewidth=2, alpha=0.7)
 
-            corr_val = correlations.get(var, 0)
+            corr_val = correlations.get(var, {}).get("corr", 0)
             ax.set_title(f"{label}\n(ρ = {corr_val:.3f})", fontsize=11, fontweight="bold")
             ax.set_xlabel(label)
             ax.set_ylabel("Default Rate (%)")
@@ -501,7 +530,7 @@ def plot_macro_correlation(merged, correlations):
 
     # Correlation bar chart in last subplot
     ax = axes[5]
-    corr_values = [correlations.get(v, 0) for v in macro_vars]
+    corr_values = [correlations.get(v, {}).get("corr", 0) for v in macro_vars]
     colors = ["#e63946" if c > 0 else "#2a9d8f" for c in corr_values]
     ax.barh(range(len(labels)), corr_values, color=colors, alpha=0.85)
     ax.set_yticks(range(len(labels)))
@@ -568,8 +597,11 @@ def main():
             print(f"  ρ ({seg}): {res['rho']:.4f}")
     if macro_correlations:
         print("  Macro correlations:")
-        for var, corr in macro_correlations.items():
-            print(f"    {var}: ρ={corr:.4f}")
+        for var, stats_dict in macro_correlations.items():
+            print(
+                f"    {var}: ρ={stats_dict['corr']:.4f}, "
+                f"p={stats_dict['pvalue']:.4f}, n={stats_dict['n']}"
+            )
     print("=" * 60)
 
     return df

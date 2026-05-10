@@ -26,21 +26,37 @@ from utils import CLEANED_DATA_PATH, FIGURES_DIR
 # SCENARIO PARAMETERS
 # ============================================================
 SCENARIOS = {
-    "Base Case": {
+    "Pure Collateral Estimate": {
         "collateral_haircut": 0.0,
         "recovery_delay_months": 6,
         "recovery_cost_pct": 0.10,
         "depreciation_annual": 0.15,
         "lgd_floor": 0.0,
-        "description": "Normal economic conditions, mathematical LGD (no floor)"
+        "description": "Model-implied collateral recovery without a prudential LGD floor"
     },
-    "Policy Floor (20%)": {
+    "Base Case (20% Floor)": {
         "collateral_haircut": 0.0,
         "recovery_delay_months": 6,
         "recovery_cost_pct": 0.10,
         "depreciation_annual": 0.15,
         "lgd_floor": 0.20,
-        "description": "Normal conditions, applying 20% LGD policy floor"
+        "description": "Normal recovery assumptions with a conservative 20% LGD floor"
+    },
+    "Moderate Stress": {
+        "collateral_haircut": 0.20,
+        "recovery_delay_months": 12,
+        "recovery_cost_pct": 0.15,
+        "depreciation_annual": 0.20,
+        "lgd_floor": 0.35,
+        "description": "Lower resale values, slower recoveries, higher recovery costs"
+    },
+    "Severe Stress": {
+        "collateral_haircut": 0.40,
+        "recovery_delay_months": 18,
+        "recovery_cost_pct": 0.20,
+        "depreciation_annual": 0.25,
+        "lgd_floor": 0.50,
+        "description": "Deep collateral haircut and long recovery delay under macro stress"
     },
     "RBI Norms (65%)": {
         "collateral_haircut": 0.0,
@@ -61,11 +77,14 @@ def estimate_collateral_value_at_default(df, scenario):
     haircut = scenario["collateral_haircut"]
     annual_depr = scenario["depreciation_annual"]
 
-    # Time since disbursement (proxy for vehicle age under loan)
+    # Time since disbursement (proxy for vehicle age under loan), plus the
+    # expected recovery delay because collateral keeps depreciating while a
+    # defaulted account is in repossession/recovery.
     if "seasoning_months" in df.columns:
         years_since_purchase = df["seasoning_months"].clip(lower=0) / 12
     else:
         years_since_purchase = df["emi_paid"] / 12
+    years_since_purchase = years_since_purchase + scenario["recovery_delay_months"] / 12
 
     # Depreciated collateral value
     # V(t) = V(0) * (1 - depr)^t * (1 - haircut)
@@ -145,8 +164,15 @@ def run_scenario_analysis(df):
         print(f"  Recovery costs: {params['recovery_cost_pct']*100:.0f}%")
 
         lgd, recovery = compute_lgd(df, params)
-        df[f"lgd_{name.lower().replace(' ', '_')}"] = lgd
-        df[f"recovery_{name.lower().replace(' ', '_')}"] = recovery
+        scenario_key = (
+            name.lower()
+            .replace(" ", "_")
+            .replace("(", "")
+            .replace(")", "")
+            .replace("%", "pct")
+        )
+        df[f"lgd_{scenario_key}"] = lgd
+        df[f"recovery_{scenario_key}"] = recovery
 
         print(f"\n  LGD Statistics:")
         print(f"    Mean LGD:        {lgd.mean():.4f} ({lgd.mean()*100:.1f}%)")
@@ -169,10 +195,10 @@ def run_scenario_analysis(df):
 def analyze_lgd_drivers(df):
     """Analyze what drives LGD variation across the portfolio."""
     print("\n" + "=" * 60)
-    print("LGD DRIVER ANALYSIS (Base Case)")
+    print("LGD DRIVER ANALYSIS (Base Case with 20% Floor)")
     print("=" * 60)
 
-    lgd_col = "lgd_base_case"
+    lgd_col = "lgd_base_case_20pct_floor"
 
     # By manufacturer
     print("\n  By Manufacturer:")
@@ -253,13 +279,13 @@ def plot_lgd_results(df, results):
 
     # 3. LGD by manufacturer
     fig, ax = plt.subplots(figsize=(12, 6))
-    lgd_col = "lgd_base_case"
+    lgd_col = "lgd_base_case_20pct_floor"
     mfr_lgd = df.groupby("manufacturer")[lgd_col].mean().sort_values(ascending=False)
 
     ax.barh(range(len(mfr_lgd)), mfr_lgd.values, color="#457b9d", alpha=0.85)
     ax.set_yticks(range(len(mfr_lgd)))
     ax.set_yticklabels(mfr_lgd.index)
-    ax.set_xlabel("Mean LGD (Base Case)")
+    ax.set_xlabel("Mean LGD (Base Case with 20% Floor)")
     ax.set_title("LGD by Vehicle Manufacturer", fontsize=14, fontweight="bold")
     ax.invert_yaxis()
 

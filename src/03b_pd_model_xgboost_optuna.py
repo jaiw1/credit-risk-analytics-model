@@ -50,8 +50,9 @@ from utils import (
 # ============================================================
 # CONFIGURATION
 # ============================================================
-# Using is_stressed (DPD>=30) as primary target for better class balance
-# Also building for is_default (DPD>=90) as secondary
+# Headline target uses DPD>=30 because 90+ DPD hard defaults are extremely
+# sparse in this sample. Treat pd_recommended as a stress/early-delinquency PD.
+# A separate 90+ DPD model should use rare-event techniques and wider validation.
 TARGET_COL = "is_stressed"       # primary target (n~1304)
 SECONDARY_TARGET = "is_default"  # hard default (n~91)
 TEST_SIZE = 0.2

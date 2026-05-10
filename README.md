@@ -50,6 +50,7 @@ In credit risk modeling, a successful prediction isn't about perfectly guessing 
 - The data is split into 80% training and 20% testing. 
 - Models are evaluated on the test set using ROC-AUC (for ranking power), Precision/Recall, and Brier Score (for accuracy of probabilities).
 - SHAP (SHapley Additive exPlanations) is used to explain *why* the AI made its decisions, ranking the most important risk drivers.
+- Because 90+ DPD hard defaults are very sparse in this dataset, the headline model uses 30+ DPD as an early-delinquency/stress PD target. A 90+ DPD model can be built separately with rare-event techniques, but the 30+ target is more stable for validation on this sample.
 **Outputs:** The trained models are saved (`outputs/models/*.pkl`) and the historical data is appended with a new `predicted_pd` column.
 
 ---
@@ -58,7 +59,7 @@ In credit risk modeling, a successful prediction isn't about perfectly guessing 
 **What it does:** If a borrower defaults, how much money do we actually lose? This module calculates the Recovery Rate (how much we get back by selling the repossessed two-wheeler) and the LGD (`1 - Recovery Rate`).
 **Assumptions & Logic:**
 - Two-wheelers depreciate rapidly. We assume a 15% annual depreciation rate.
-- We apply different stress scenarios. In the **Base Case**, recovery costs are 10%. Under **Severe Stress**, the vehicle's resale value drops by 40% (haircut) and recovery takes 18 months.
+- We present both a pure collateral-recovery estimate and conservative floored LGD scenarios. The base reporting case applies a 20% LGD floor, while moderate/severe stress scenarios add collateral haircuts, longer recovery delays, higher costs, and higher floors.
 - If a loan has no collateral, the model assumes a 100% LGD (0% recovery).
 **Output:** The data is appended with estimated LGD values.
 
@@ -75,7 +76,7 @@ In credit risk modeling, a successful prediction isn't about perfectly guessing 
 **What it does:** Analyzes how defaults are clustered together. If one loan defaults, does it mean others will too? 
 **How it works:** 
 - Uses K-Means clustering to segment borrowers into distinct risk profiles.
-- Correlates internal loan defaults with external macroeconomic factors (like CPI inflation, GDP growth, and unemployment rates).
+- Correlates internal loan vintages with actual time-aligned external macroeconomic factors from `data/india_macro_quarterly.csv` instead of synthetic macro defaults. Thin vintages are filtered so the output remains empirically defensible.
 **Significance:** Helps the business understand if their risk is too concentrated in a specific borrower segment or highly vulnerable to a specific macroeconomic shock.
 
 ---

@@ -276,9 +276,11 @@ def main():
     df = load_data()
 
     scenarios = [
-        {"name": "Base Case", "col": "lgd_base_case"},
-        {"name": "Policy Floor 20%", "col": "lgd_policy_floor_(20%)"},
-        {"name": "RBI Norms 65%", "col": "lgd_rbi_norms_(65%)"}
+        {"name": "Pure Collateral Estimate", "col": "lgd_pure_collateral_estimate"},
+        {"name": "Base Case 20% Floor", "col": "lgd_base_case_20pct_floor"},
+        {"name": "Moderate Stress", "col": "lgd_moderate_stress"},
+        {"name": "Severe Stress", "col": "lgd_severe_stress"},
+        {"name": "RBI Norms 65%", "col": "lgd_rbi_norms_65pct"}
     ]
     
     all_reports = []

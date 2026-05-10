@@ -76,7 +76,7 @@ def main():
         X = woe.transform(X)
     else:
         # Legacy LabelEncoding path
-        cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
+        cat_cols = X.select_dtypes(include=["object", "str", "category"]).columns.tolist()
         
         for col in cat_cols:
             X[col] = X[col].astype(str)
@@ -111,7 +111,7 @@ def main():
     if scaler != "NO_SCALER":
         X_processed = scaler.transform(X)
     else:
-        X_processed = X.values
+        X_processed = X
         
     df["predicted_pd"] = model.predict_proba(X_processed)[:, 1]
     
@@ -126,13 +126,18 @@ def main():
     from importlib import import_module
     lgd_model = import_module("04_lgd_model")
     
-    # Use Base Case scenario
-    base_case = lgd_model.SCENARIOS["Base Case"]
+    # Use the conservative base scenario for headline EL, while preserving the
+    # pure collateral estimate in the output for transparency.
+    pure_case = lgd_model.SCENARIOS["Pure Collateral Estimate"]
+    base_case = lgd_model.SCENARIOS["Base Case (20% Floor)"]
     
     # ensure total_pos is not null for LGD calc
     df["total_pos"] = df["total_pos"].fillna(df["sanctioned_loan_amount"])
     
+    pure_lgd, pure_recovery_rate = lgd_model.compute_lgd(df, pure_case)
     predicted_lgd, recovery_rate = lgd_model.compute_lgd(df, base_case)
+    df["pure_collateral_lgd"] = pure_lgd
+    df["pure_collateral_recovery_rate"] = pure_recovery_rate
     df["predicted_lgd"] = predicted_lgd
     df["recovery_rate"] = recovery_rate
     
@@ -150,8 +155,8 @@ def main():
 
     # 7. Save outputs
     output_path = os.path.join(PROJECT_ROOT, "outputs", "analysis_pool_scored.csv")
-    out_cols = ["loan_account_number", "sanctioned_loan_amount", "exposure_at_default", 
-                "predicted_pd", "predicted_lgd", "expected_loss"]
+    out_cols = ["loan_account_number", "sanctioned_loan_amount", "exposure_at_default",
+                "predicted_pd", "pure_collateral_lgd", "predicted_lgd", "expected_loss"]
     df[out_cols].to_csv(output_path, index=False)
     print(f"\n[7] Saved scored pool to: {output_path}")
 

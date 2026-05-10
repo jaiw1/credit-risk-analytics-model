@@ -24,7 +24,7 @@ This document provides a detailed mapping of the tasks outlined in the **Detaile
   - **AI/ML Models:** Implements both a tree-based ensemble (Gradient Boosting / Random Forest) and a Neural Network (MLP Classifier).
   - **Model Validation:** Uses standard credit risk validation techniques including ROC-AUC, Gini, Kolmogorov-Smirnov (KS) statistic, Brier Score, reliability diagrams (calibration curves), and decile validation tables.
   - **Risk Drivers Explanation:** Uses **SHAP (SHapley Additive exPlanations)** to generate feature importance plots, explaining exactly which variables drive the credit risk (e.g., generating `shap_summary.png`).
-  - **PD Estimate & Recommendation:** Estimates PD for each individual loan and dynamically recommends the best-performing model based on AUC and Brier scores.
+  - **PD Estimate & Recommendation:** Estimates PD for each individual loan and dynamically recommends the best-performing model based on AUC and Brier scores. Because 90+ DPD defaults are rare in this sample, the headline model is a 30+ DPD stress-PD model; a 90+ DPD model should be treated as a rare-event extension.
 
 ## 3. Loss Given Default (LGD) Modelling
 **PDF Requirement:** Estimate LGD based on collateral characteristics for each loan and perform scenario analysis (macroeconomic factors, recovery delays).
@@ -32,7 +32,7 @@ This document provides a detailed mapping of the tasks outlined in the **Detaile
 - **Script:** `src/04_lgd_model.py`
 - **What is done:**
   - Calculates specific LGD estimates for each loan using available collateral and recovery data.
-  - Performs **Scenario Analysis** by estimating LGD across different economic stress scenarios (e.g., Base Case, Moderate Stress, Severe Stress), factoring in potential recovery delays and macroeconomic headwinds.
+  - Performs **Scenario Analysis** by estimating LGD across a pure collateral case, a 20% floor base case, moderate stress, severe stress, and a 65% floor case, factoring in collateral haircuts, recovery delays, and recovery costs.
 
 ## 4. Portfolio Loss Distribution
 **PDF Requirement:** Compute the expected loss of the pool, perform loss distribution simulation (Monte Carlo), and estimate tail risk.
@@ -48,9 +48,9 @@ This document provides a detailed mapping of the tasks outlined in the **Detaile
 **Implementation:**
 - **Script:** `src/06_correlation_model.py`
 - **What is done:**
-  - Incorporates pool-level default correlation linked to macroeconomic and external variables (like inflation, collateral values).
+  - Incorporates pool-level default correlation linked to actual time-aligned macroeconomic and external variables from `data/india_macro_quarterly.csv`.
   - Uses clustering/segmentation algorithms to group borrowers into specific risk segments with similar stress behaviours.
-  - Adjusts individual PDs based on systemic stress factors derived from the borrower segments.
+  - Produces a macro/vintage correlation dataset and reports sample size limits instead of creating synthetic default rates.
 
 ## 6. Probability of Default Curve (Cashflow Simulation)
 **PDF Requirement:** Simulate cashflows from the pool, making appropriate assumptions regarding prepayment and default timing.

@@ -76,8 +76,15 @@ def generate_excel_output():
         lgd_path = CLEANED_DATA_PATH.replace(".csv", "_with_lgd.csv")
         if os.path.exists(lgd_path):
             lgd_df = pd.read_csv(lgd_path)
-            lgd_cols = ["loan_account_number", "lgd_base_case", "lgd_moderate_stress",
-                        "lgd_severe_stress", "recovery_base_case"]
+            lgd_cols = [
+                "loan_account_number",
+                "lgd_pure_collateral_estimate",
+                "lgd_base_case_20pct_floor",
+                "lgd_moderate_stress",
+                "lgd_severe_stress",
+                "lgd_rbi_norms_65pct",
+                "recovery_base_case_20pct_floor",
+            ]
             existing_lgd = [c for c in lgd_cols if c in lgd_df.columns]
             if existing_lgd:
                 lgd_df[existing_lgd].to_excel(writer, sheet_name="LGD Per Loan", index=False)
