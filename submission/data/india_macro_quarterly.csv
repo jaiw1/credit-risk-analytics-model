@@ -1,0 +1,12 @@
+quarter,cpi_inflation_yoy_pct,real_gdp_qoq_pct,policy_rate_pct,share_price_qoq_return_pct,share_price_index,source_notes
+2022Q4,5.665659,1.457933,6.243333,4.968960,225.783300,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2023Q1,6.036229,2.559423,6.645833,-5.202688,214.036500,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2023Q2,5.027176,2.930244,6.750000,7.884123,230.911400,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2023Q3,6.392906,2.055725,6.750000,5.261455,243.060700,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2023Q4,4.782360,1.813152,6.750000,5.993894,257.629500,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2024Q1,4.564245,1.388305,6.750000,3.862019,267.579200,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2024Q2,3.800287,1.309379,6.750000,4.965184,280.865000,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2024Q3,2.936062,1.448868,6.750000,8.405106,304.472000,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2024Q4,3.939944,1.923305,6.750000,-3.823176,292.831500,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2025Q1,2.877881,2.091288,6.583333,-5.945330,275.421700,"CPI/GDP/rates/share prices aggregated from FRED/OECD monthly or quarterly series; CPI is average YoY monthly inflation; share return is quarter-end index change."
+2025Q2,2.693333,1.774614,6.104167,8.932775,300.024500,"GDP/rates/share prices aggregated from FRED/OECD; CPI uses MoSPI monthly headline inflation for Apr/May/Jun 2025 averaged as 3.16/2.82/2.10."
